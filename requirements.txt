@@ -1,0 +1,79 @@
+# Life Care Pharmacy ERP (D:\05-08-2026) - runtime dependencies
+#
+# NOTE: this file previously held the SEPARATE Streamlit analytics
+# dashboard's dependencies (streamlit/pandas/plotly/openpyxl/reportlab)
+# by mistake - that dashboard project (app.py, style.py, db_reader.py,
+# export_utils.py, README.md, Start_Dashboard.bat) belongs in
+# D:\Pharmacy_Advanced, not here. Those stray files are left in this
+# folder untouched (nothing in the real ERP imports them, so they're
+# harmless clutter, not a crash risk) - move them back to
+# D:\Pharmacy_Advanced whenever convenient.
+#
+# build_exe.bat installs THIS file into build_venv before running
+# PyInstaller, so this needs to list the real ERP's dependencies for
+# the .exe build to work.
+#
+# Versions below are pinned where requirements-test.txt already
+# confirms one works with this codebase's test suite. Everything else
+# is left unpinned - run `pip freeze` in your actual working venv and
+# fill in the exact version you're using before your next
+# build_exe.bat run, so the build matches what you've tested.
+
+# --- Core GUI ---
+ttkbootstrap==2.2.2
+tksheet==7.6.0
+Pillow==12.3.0
+
+# --- OCR / invoice scanning (bulk_import.py, ocr_supplier_templates.py,
+# ocr_table_reconstruction.py, prescription_ocr.py) ---
+pytesseract==0.3.13
+pdf2image
+# Needs the Tesseract OCR engine and Poppler (for PDF invoices)
+# installed separately as system binaries - see bulk_import.py's
+# _resolve_poppler_path() and TESSERACT_CMD.
+
+# --- Fuzzy matching (medicine_matcher.py) ---
+# Not wired in yet (medicine_matcher.py still uses difflib) - listed
+# here for the planned drop-in swap noted in that file's own docstring.
+RapidFuzz==3.14.5
+
+# --- Reports / exports ---
+openpyxl==3.1.5
+reportlab==5.0.0
+
+# --- In-app charts (dashboard.py's Tkinter dashboard - NOT the separate
+# Streamlit dashboard) ---
+matplotlib
+numpy==2.5.2
+
+# --- Barcode / QR / thermal printing (billing.py, barcode_print.py) ---
+qrcode
+python-barcode
+python-escpos
+
+# --- Encrypted backups (backup_manager.py, Sep 2026) ---
+# pyzipper is what actually AES-256-encrypts each daily backup zip -
+# without it installed, backup_manager.py silently falls back to a
+# PLAIN, unencrypted .db copy (see that file's own docstring on why it
+# degrades instead of crashing). This was missing from this file since
+# the encrypted-backup feature was first written, which is why every
+# backup made so far has actually been the plain fallback, not the
+# encrypted one the feature was meant to produce.
+pyzipper==0.4.0
+
+# --- Voice entry benchmarking (voice_accuracy_test.py) ---
+# Not required for main.py's day-to-day run; PyInstaller's spec
+# deliberately excludes this from the built .exe (see
+# pharmacy_erp.spec's excludes list) to keep the build lean.
+faster-whisper
+
+# --- Standalone React/Electron companion API (api_server.py) ---
+# Only needed if you run it separately (start_billing.bat: `uvicorn
+# api_server:app --port 8000`). Not imported by main.py, and also
+# excluded from the built .exe.
+fastapi
+pydantic
+uvicorn
+
+# --- Misc ---
+requests

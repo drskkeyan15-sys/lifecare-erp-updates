@@ -1,7 +1,6 @@
 import sqlite3
 from app_paths import DB_NAME
 from generic_mapping import ensure_tables, ensure_composition_master
-import ddi_checker
 import auth_utils
 
 def connect():
@@ -34,6 +33,16 @@ def create_database():
     # exact instant of a write, which NORMAL's default (FULL) protects
     # against at a real, measurable write-speed cost this app doesn't
     # need to pay on every single billing/purchase save.
+    #
+    # Sep 2026: this line only ever affected THIS ONE connection -
+    # unlike journal_mode above, synchronous isn't a persistent per-file
+    # setting, so it has to be reissued on every connection to actually
+    # apply everywhere. That's now also done in app_paths.py's
+    # sqlite3.connect() patch (right next to the same fix already in
+    # place there for PRAGMA foreign_keys=ON), so every one of the ~216
+    # connections across the app gets it, not just this one. Left here
+    # too - harmless to set twice, and this file is the natural place to
+    # read the WAL/NORMAL/busy_timeout story as a matched set.
     cur.execute("PRAGMA synchronous=NORMAL")
     # A connection that hits a lock now waits up to 5s for it to clear
     # instead of failing immediately - smooths over the brief overlaps
@@ -44,13 +53,6 @@ def create_database():
     # டேட்டாபேஸ் டேபிள்களை உருவாக்குதல்
     ensure_tables()
     ensure_composition_master()
-    # DDI Safety Checker framework (Aug 2026) - see ddi_checker.py's own
-    # module docstring for the "reference only, not comprehensive"
-    # caveat. Created here too (not just lazily inside
-    # check_cart_interactions()) so a fresh install has the table ready
-    # before Billing is ever opened, matching how the two calls above
-    # already eagerly create their own tables at startup.
-    ddi_checker.ensure_table()
 
     # 1. USERS TABLE
     cur.execute("""

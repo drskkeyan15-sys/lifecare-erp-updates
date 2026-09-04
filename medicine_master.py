@@ -95,7 +95,18 @@ class MedicineMaster:
             _checkpoints.append((step_name, time.perf_counter()))
 
         self.parent = parent
-        self.frame = tk.Frame(parent, bg="white")
+        # Concept A (Sep 2026): was bg="white" - dashboard.py's self.body
+        # and open_module()'s throwaway container frame (the two parents
+        # this frame sits inside during the destroy/rebuild screen switch)
+        # are both theme.SURFACE_PAGE ("#ecf0f1", a very light grey, not
+        # pure white). That mismatch meant every switch into this screen
+        # had one extra, real color-flip (grey -> white) baked into the
+        # transition on top of the already-investigated destroy/rebuild
+        # gap (see dashboard.py's "FLASH FIX ATTEMPT" comment) - matching
+        # it removes that one flip. Does not touch open_module()/
+        # clear_body() itself, so no risk of the worse bugs those three
+        # earlier attempts hit.
+        self.frame = tk.Frame(parent, bg=theme.SURFACE_PAGE)
         self.frame.pack(fill="both", expand=True)
         _mark("frame_setup")
 
@@ -274,7 +285,7 @@ class MedicineMaster:
         tk.Label(
             self.frame,
             text="MEDICINE MASTER",
-            bg="#1565C0",
+            bg=theme.PRIMARY,
             fg="white",
             font=("Segoe UI", 18, "bold"),
             pady=10
@@ -466,7 +477,11 @@ class MedicineMaster:
             variable=self.needs_refrigeration, font=("Segoe UI", 9, "bold")
         ).grid(row=row + 2, column=0, columnspan=4, sticky="w", padx=5, pady=(0, 5))
 
-        btn = tk.Frame(self.frame)
+        # Concept A (Sep 2026): explicit bg matching self.frame's new
+        # theme.SURFACE_PAGE (was unset, i.e. Tk's default grey, which
+        # used to sit unnoticed against the old bg="white" frame above
+        # it but would show as a visible mismatched rectangle now).
+        btn = tk.Frame(self.frame, bg=theme.SURFACE_PAGE)
 
         if purchase_entry:
             purchase_entry.bind("<KeyRelease>", lambda e: self.calculate_profit())
@@ -491,70 +506,39 @@ class MedicineMaster:
 
         btn.pack(fill="x", padx=10, pady=10)
 
-        tk.Button(
-            btn,
-            text="Save",
-            bg="green",
-            fg="white",
-            width=12,
-            command=self.save
-        ).pack(side="left", padx=5)
+        # Concept A (Sep 2026): raw literal colors ("green"/"blue"/"red")
+        # replaced with theme.py tokens carrying the same MEANING
+        # (STATUS_SUCCESS/PRIMARY/STATUS_DANGER are already used this way
+        # elsewhere - Stock/Smart Alerts, tksheet row highlights, etc.),
+        # not necessarily the identical hex - flat relief + hover state
+        # added to match the rest of the ERP's already-flat button style
+        # (sidebar, Load More button below). Pure widget-option changes,
+        # no new logic, no change to save()/update()/delete() themselves.
+        def _btn(parent, text, bg, hover, command, width):
+            b = tk.Button(
+                parent, text=text, bg=bg, fg="white", width=width,
+                relief="flat", bd=0, cursor="hand2",
+                activebackground=hover, activeforeground="white",
+                command=command
+            )
+            b.bind("<Enter>", lambda e, btn=b, h=hover: btn.config(bg=h))
+            b.bind("<Leave>", lambda e, btn=b, c=bg: btn.config(bg=c))
+            return b
 
-        tk.Button(
-            btn,
-            text="Update",
-            bg="blue",
-            fg="white",
-            width=12,
-            command=self.update
-        ).pack(side="left", padx=5)
+        _btn(btn, "Save", theme.STATUS_SUCCESS, theme.PRIMARY_HOVER, self.save, 12).pack(side="left", padx=5)
+        _btn(btn, "Update", theme.PRIMARY, theme.PRIMARY_HOVER, self.update, 12).pack(side="left", padx=5)
+        _btn(btn, "Delete", theme.STATUS_DANGER, "#B71C1C", self.delete, 12).pack(side="left", padx=5)
+        _btn(btn, "Clear", theme.ACCENT_NEUTRAL, "#78909C", self.clear, 12).pack(side="left", padx=5)
 
-        tk.Button(
-            btn,
-            text="Delete",
-            bg="red",
-            fg="white",
-            width=12,
-            command=self.delete
-        ).pack(side="left", padx=5)
-
-        tk.Button(
-            btn,
-            text="Clear",
-            width=12,
-            command=self.clear
-        ).pack(side="left", padx=5)
-
-        tk.Button(
-            btn,
-            text="View Info",
-            bg="#1565C0",
-            fg="white",
-            width=12,
-            command=self.show_medicine_info_popup
-        ).pack(side="left", padx=5)
-
-        tk.Button(
-            btn,
-            text="Check Brands",
-            bg="#1565C0",
-            fg="white",
-            width=15,
-            command=self.check_brands_action
-        ).pack(side="left", padx=5)
-
-        tk.Button(
-            btn,
-            text="Composition Master",
-            bg="#2E7D32",
-            fg="white",
-            width=18,
-            command=self.open_composition_master
-        ).pack(side="left", padx=5)
+        _btn(btn, "View Info", theme.PRIMARY, theme.PRIMARY_HOVER, self.show_medicine_info_popup, 12).pack(side="left", padx=5)
+        _btn(btn, "Check Brands", theme.PRIMARY, theme.PRIMARY_HOVER, self.check_brands_action, 15).pack(side="left", padx=5)
+        _btn(btn, "Composition Master", theme.STATUS_SUCCESS, theme.PRIMARY_HOVER, self.open_composition_master, 18).pack(side="left", padx=5)
 
         tk.Label(
             btn,
-            text="Search:"
+            text="Search:",
+            bg=theme.SURFACE_PAGE,
+            fg=theme.TEXT_LABEL
         ).pack(side="left", padx=(20, 5))
 
         search = tk.Entry(

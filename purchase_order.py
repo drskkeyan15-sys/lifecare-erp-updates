@@ -126,16 +126,41 @@ class PurchaseOrder:
         ui_style.bind_search_combo(
             self.cmbMedicine,
             on_filter=self._filter_medicine_dropdown,
-            on_confirm=lambda e=None: bool(self.medicine.get().strip()),
+            on_confirm=self._on_medicine_confirm,
             next_widget=self.txtQty,
         )
 
-        tk.Label(form, text="Note").grid(row=2, column=0, padx=5, pady=6, sticky="w")
-        tk.Entry(form, textvariable=self.note, width=60).grid(row=2, column=1, columnspan=3, padx=5, pady=6, sticky="w")
+        # Supplier Price Comparison (Sep 2026) - once a Medicine is
+        # resolved (Enter/Tab/click, same on_confirm trigger as above,
+        # not on every keystroke), show which Supplier has historically
+        # charged the least for it, right here, before the pharmacist
+        # even picks a Supplier at the top of this form. See
+        # purchase_order_repository.get_medicine_price_by_supplier()'s
+        # docstring for why it's each Supplier's own latest price, not
+        # an average across time.
+        hint_frame = tk.Frame(form, bg=theme.SURFACE_FIELD)
+        hint_frame.grid(row=2, column=0, columnspan=5, padx=5, pady=(0, 6), sticky="we")
+        self.price_hint_label = tk.Label(
+            hint_frame, text="", bg=theme.SURFACE_FIELD, fg=theme.TEXT_LABEL,
+            font=("Segoe UI", 9), anchor="w", justify="left", wraplength=760
+        )
+        self.price_hint_label.pack(side="left", padx=8, pady=4, fill="x", expand=True)
+        self.btnUseBestSupplier = tk.Button(
+            hint_frame, text="Use This Supplier", bg=theme.PRIMARY, fg="white",
+            font=("Segoe UI", 9), relief="flat", bd=0, cursor="hand2",
+            activebackground=theme.PRIMARY_HOVER, activeforeground="white",
+            command=self._use_best_supplier
+        )
+        self._best_price_supplier = None
+        # Not packed yet - only shown once _update_price_hint() actually
+        # finds more than one Supplier to choose between (see there).
+
+        tk.Label(form, text="Note").grid(row=3, column=0, padx=5, pady=6, sticky="w")
+        tk.Entry(form, textvariable=self.note, width=60).grid(row=3, column=1, columnspan=3, padx=5, pady=6, sticky="w")
 
         # Working item list for the PO being built
         item_frame = tk.Frame(form)
-        item_frame.grid(row=3, column=0, columnspan=5, padx=5, pady=(6, 10), sticky="we")
+        item_frame.grid(row=4, column=0, columnspan=5, padx=5, pady=(6, 10), sticky="we")
 
         cols = ("Medicine", "Qty")
         self.itemTable = ttk.Treeview(item_frame, columns=cols, show="headings", height=6, style="ERP.Treeview")
@@ -217,6 +242,54 @@ class PurchaseOrder:
             else [n for n in self._medicine_names if typed in n.lower()]
         )
 
+    def _on_medicine_confirm(self, event=None):
+        """bind_search_combo()'s on_confirm for cmbMedicine - resolves
+        the typed/picked Medicine (same success/failure contract as the
+        plain lambda this replaced) AND, on success, refreshes the
+        Supplier Price Comparison hint below the form for that
+        medicine."""
+        name = self.medicine.get().strip()
+        ok = bool(name)
+        if ok:
+            self._update_price_hint(name)
+        else:
+            self._clear_price_hint()
+        return ok
+
+    def _update_price_hint(self, name):
+        rows = repo.get_medicine_price_by_supplier(name)
+        self.btnUseBestSupplier.pack_forget()
+        self._best_price_supplier = None
+
+        if not rows:
+            self.price_hint_label.config(
+                text=f'"{name}" has no purchase price history yet - no Supplier to compare.'
+            )
+            return
+
+        best_supplier, best_price, best_date = rows[0]
+        text = f'"{name}" - Best Price: {best_supplier} @ ₹{best_price:.2f} (last bought {best_date})'
+
+        if len(rows) > 1:
+            others = ", ".join(f"{s} ₹{p:.2f}" for s, p, _d in rows[1:4])
+            text += f"   |   Also bought from: {others}"
+            self._best_price_supplier = best_supplier
+            self.btnUseBestSupplier.pack(side="right", padx=8, pady=4)
+
+        self.price_hint_label.config(text=text)
+
+    def _clear_price_hint(self):
+        self.price_hint_label.config(text="")
+        self.btnUseBestSupplier.pack_forget()
+        self._best_price_supplier = None
+
+    def _use_best_supplier(self):
+        """One-click fill of the top Supplier field from the price-hint
+        row's cheapest match - saves re-typing/re-picking a name that's
+        already right there on screen."""
+        if self._best_price_supplier:
+            self.supplier.set(self._best_price_supplier)
+
     def load_low_stock_for_supplier(self):
         """Same low-stock + last-supplier-used logic as Smart Alerts'
         load_low_stock() - see this module's docstring for why it's not
@@ -274,6 +347,7 @@ class PurchaseOrder:
         self._refresh_item_table()
         self.medicine.set("")
         self.qty.set(1)
+        self._clear_price_hint()
         # ERP-wide keyboard-nav pass (Aug 2026): return focus to Medicine
         # (this screen's "main search box") for continuous entry, same
         # as Billing/Purchase Entry re-focusing their own top field after

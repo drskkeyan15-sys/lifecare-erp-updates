@@ -99,4 +99,20 @@ ACCENT_PDF_EXPORT = "#D32F2F"     # gst_reports.py "Download PDF" button
 # full app-wide dark mode was scoped out). The top bar and sidebar are
 # static brand-navy in both light and dark mode already, so they're a
 # plain, safe swap - same tier as PRIMARY above.
-SIDEBAR_BG = "#2C3E50"
+#
+# ─── Concept A "Refined Brand Blue" sidebar palette (Sep 2026) ──────
+# User-approved redesign direction (chose Concept A over Concept B,
+# 2026-09-04). Kept as FLAT solid colors, not a real navy gradient (the
+# mockup's visual top-to-bottom shade) - a gradient would need a
+# Canvas-drawn sidebar background instead of the existing plain
+# tk.Frame, which adds real rendering cost on every screen open. Also
+# important: the sidebar is built ONCE in dashboard.py's build_ui() and
+# is never destroyed/rebuilt when switching screens (only self.body's
+# contents are, in clear_body()/open_module() - see that file's own
+# "FLASH FIX ATTEMPT" comment on the already-investigated screen-switch
+# delay). So changing these four color values is zero-risk to that
+# issue - a static sidebar repaint cannot make the transition slower.
+SIDEBAR_BG = "#1B4F91"            # was #2C3E50 (slate) - refined brand navy-blue
+SIDEBAR_HEADER_BG = "#123A6E"     # category group headers (was raw "#1B2631" in dashboard.py)
+SIDEBAR_ITEM_BG = "#2A5DA8"       # sidebar sub-item buttons, resting (was raw "#34495E")
+SIDEBAR_ITEM_HOVER = "#3D72C4"    # sub-item hover / keyboard-focus state (was raw "#1B4F72")

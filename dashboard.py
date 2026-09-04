@@ -526,7 +526,7 @@ class Dashboard:
                 image=get_icon(icon_name),
                 compound="left",
                 anchor="w",
-                bg="#1B2631",
+                bg=app_theme.SIDEBAR_HEADER_BG,
                 fg="white",
                 font=("Segoe UI", 10, "bold"),
                 relief="flat",
@@ -537,6 +537,16 @@ class Dashboard:
                 command=lambda c=cat_name: self.toggle_category(c)
             )
             header_btn.pack(fill="x", padx=5, pady=(2, 0))
+            # Concept A (Sep 2026): mouse-hover feedback - previously this
+            # button (and every sidebar button) only reacted to keyboard
+            # focus (see the sub-item buttons' FocusIn/FocusOut below),
+            # so hovering with the mouse gave no visual response at all.
+            # Plain color swap on Enter/Leave, same pattern already used
+            # and proven safe for sub-items - no new widgets, no change
+            # to open_module()/clear_body(), so this cannot affect the
+            # already-investigated screen-switch flash/delay.
+            header_btn.bind("<Enter>", lambda e, b=header_btn: b.config(bg=app_theme.SIDEBAR_ITEM_HOVER))
+            header_btn.bind("<Leave>", lambda e, b=header_btn: b.config(bg=app_theme.SIDEBAR_HEADER_BG))
 
             child_frame = tk.Frame(self.sidebar, bg=app_theme.SIDEBAR_BG)
             self.category_frames[cat_name] = {"header": header_btn, "frame": child_frame, "items": items}
@@ -581,13 +591,17 @@ class Dashboard:
             if not info["frame"].winfo_children():
                 for text, cmd in info["items"]:
                     b = tk.Button(
-                        info["frame"], text=text, command=cmd, 
-                        bg="#34495E", fg="white", font=("Segoe UI", 10), 
+                        info["frame"], text=text, command=cmd,
+                        bg=app_theme.SIDEBAR_ITEM_BG, fg="white", font=("Segoe UI", 10),
                         relief="flat", height=2, anchor="w", padx=30, cursor="hand2", takefocus=True
                     )
                     b.pack(fill="x", pady=1)
-                    b.bind("<FocusIn>", lambda e, btn=b: btn.config(bg="#1B4F72"))
-                    b.bind("<FocusOut>", lambda e, btn=b: btn.config(bg="#34495E"))
+                    b.bind("<FocusIn>", lambda e, btn=b: btn.config(bg=app_theme.SIDEBAR_ITEM_HOVER))
+                    b.bind("<FocusOut>", lambda e, btn=b: btn.config(bg=app_theme.SIDEBAR_ITEM_BG))
+                    # Concept A (Sep 2026): mouse-hover, same reasoning as
+                    # header_btn's Enter/Leave bind above - additive only.
+                    b.bind("<Enter>", lambda e, btn=b: btn.config(bg=app_theme.SIDEBAR_ITEM_HOVER))
+                    b.bind("<Leave>", lambda e, btn=b: btn.config(bg=app_theme.SIDEBAR_ITEM_BG))
                     b.bind("<Return>", lambda e, btn=b: btn.invoke())
             info["frame"].pack(fill="x", after=info["header"])
             info["header"].config(text=f"▼  {cat_name}")

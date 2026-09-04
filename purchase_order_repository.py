@@ -14,6 +14,7 @@ file.
 """
 
 import sqlite3
+from datetime import datetime, timedelta
 
 from app_paths import DB_NAME
 
@@ -71,6 +72,130 @@ def get_low_stock_with_last_supplier(threshold):
             last_supplier[medicine] = supplier
     con.close()
     return rows, last_supplier
+
+
+def get_velocity_low_stock_with_last_supplier(lead_days=15, window_days=30):
+    """Sales-velocity-based reorder check for auto_po.py's background
+    generator (Sep 2026) - a headless, non-tkinter counterpart to
+    stock_alerts_gui.py's SmartAlertsDashboard.load_reorder_predictions().
+    Deliberately a separate copy rather than a shared import, matching
+    this module's own established convention (see
+    get_low_stock_with_last_supplier()'s docstring above) - the GUI
+    version stays free to add tkinter-only concerns (a live IntVar, a
+    tksheet row cache) without this background/headless copy having to
+    change with it, and vice versa.
+
+    Catches a genuinely different case than get_low_stock_with_last_
+    supplier(): a fast-selling medicine can still be well above its
+    numeric reorder_level today and yet run out within `lead_days` at
+    its current sales pace - the flat-threshold check has no way to see
+    that coming. A slow mover just under threshold is NOT flagged here
+    even if it would be by the threshold check - the two checks are
+    meant to be combined (see auto_po.py), not to replace one another.
+
+    Returns (rows, last_supplier) where rows is a list of
+    (name, stock, suggested_qty) tuples for medicines predicted to run
+    out within `lead_days` given their last `window_days` days of
+    sales, and last_supplier is a {medicine_name: supplier_name} dict
+    for exactly those medicines. Medicines with no sales in the window
+    (no usage data to predict from) are never included - matches the
+    GUI version's own "not enough data" guard exactly, rather than
+    risking a wrong alert built on zero evidence."""
+    con = sqlite3.connect(DB_NAME)
+    cur = con.cursor()
+
+    cur.execute("SELECT name, SUM(stock) FROM medicine_master GROUP BY name")
+    stock_by_name = dict(cur.fetchall())
+
+    # sales.bill_date is stored as free-text "YYYY-MM-DD" (billing.py's
+    # save_bill() - see stock_alerts_gui.py's load_reorder_predictions()
+    # for the fuller history on this), parsed by hand rather than
+    # trusted via SQL string sort, same reasoning as that method.
+    cur.execute("""
+        SELECT s.bill_date, si.medicine, si.qty
+        FROM sales_items si
+        JOIN sales s ON si.bill_no = s.bill_no
+    """)
+    sale_rows = cur.fetchall()
+    con.close()
+
+    cutoff = datetime.now() - timedelta(days=window_days)
+    usage_qty = {}
+    for bill_date_str, medicine, qty in sale_rows:
+        try:
+            d = datetime.strptime((bill_date_str or "").strip(), "%Y-%m-%d")
+        except (ValueError, TypeError):
+            continue
+        if d >= cutoff:
+            usage_qty[medicine] = usage_qty.get(medicine, 0) + (qty or 0)
+
+    rows = []
+    for name, stock in stock_by_name.items():
+        total_used = usage_qty.get(name, 0)
+        if total_used <= 0:
+            continue
+        avg_daily = total_used / window_days
+        days_remaining = stock / avg_daily
+        if days_remaining > lead_days:
+            continue
+        suggested_qty = max(int(round(avg_daily * lead_days)) - int(stock), 1)
+        rows.append((name, stock, suggested_qty))
+
+    names = sorted(r[0] for r in rows)
+    last_supplier = {}
+    if names:
+        con = sqlite3.connect(DB_NAME)
+        cur = con.cursor()
+        placeholders = ",".join("?" * len(names))
+        cur.execute(f"""
+            SELECT medicine, supplier FROM purchase
+            WHERE medicine IN ({placeholders})
+            AND id IN (SELECT MAX(id) FROM purchase WHERE medicine IN ({placeholders}) GROUP BY medicine)
+        """, names + names)
+        for medicine, supplier in cur.fetchall():
+            last_supplier[medicine] = supplier
+        con.close()
+
+    return rows, last_supplier
+
+
+def get_medicine_price_by_supplier(medicine_name):
+    """Supplier Price Comparison (Sep 2026) - feeds the Purchase Order
+    screen's "Best Price" hint (see purchase_order.py's
+    _update_price_hint()), so the pharmacist can see, right while
+    picking a Medicine, which Supplier has historically charged the
+    least for it - instead of relying on memory or flipping between
+    screens.
+
+    One row per Supplier this medicine has ever been bought from - that
+    Supplier's own MOST RECENT purchase row's price (not an average),
+    since prices drift over months and the last price paid is the one a
+    new order would most likely repeat. Rows with a blank/NULL supplier
+    (a purchase entered without picking one) or a NULL price are
+    excluded - nothing useful to compare there.
+
+    Returns a list of (supplier, purchase_price, bill_date) tuples
+    sorted cheapest-first; empty if this medicine has never actually
+    been purchased from anyone yet (e.g. a brand-new medicine, or one
+    only ever entered via Stock Adjustment)."""
+    con = sqlite3.connect(DB_NAME)
+    cur = con.cursor()
+    cur.execute("""
+        SELECT supplier, purchase, bill_date
+        FROM purchase
+        WHERE medicine = ?
+        AND supplier IS NOT NULL AND TRIM(supplier) != ''
+        AND purchase IS NOT NULL
+        AND id IN (
+            SELECT MAX(id) FROM purchase
+            WHERE medicine = ? AND supplier IS NOT NULL AND TRIM(supplier) != ''
+            GROUP BY supplier
+        )
+        ORDER BY purchase ASC
+    """, (medicine_name, medicine_name))
+    rows = cur.fetchall()
+    con.close()
+    return rows
 
 
 def get_medicines_with_open_po():

@@ -12,7 +12,8 @@ import sys
 import os
 import sqlite3
 
-# ─── Foreign key enforcement, applied to every connection app-wide ─────
+# ─── Foreign key enforcement + WAL's fast-write pragma, applied to
+# every connection app-wide ──────────────────────────────────────────
 # SQLite ships with foreign key checks OFF by default, and unlike
 # journal_mode this is NOT a persistent per-file setting - it has to be
 # re-issued on every single connection, every time. The app opens
@@ -29,6 +30,22 @@ import sqlite3
 # while purchase_items/sales_items rows still pointed at that old id, and
 # SQLite would silently allow it.
 #
+# PRAGMA synchronous=NORMAL (Sep 2026 addition) rides along on the exact
+# same patch for the exact same reason: database.py's create_database()
+# already issues this once at startup, alongside PRAGMA journal_mode=WAL
+# (see that file's own comment on why WAL was enabled), but synchronous
+# is a per-connection setting like foreign_keys, NOT a persistent
+# per-file one like journal_mode - so that single startup connection was
+# the only one in the whole app actually running in NORMAL mode. Every
+# other connection (purchase.py, billing.py, every repository module -
+# whichever of the ~216 sqlite3.connect() call sites ran) was silently
+# falling back to SQLite's own default of FULL on every write, all app
+# long. Not a safety bug - FULL is the safer/slower of the two, so
+# nothing was ever put at risk - just the write-speed benefit WAL+NORMAL
+# was meant to buy never actually applied outside that one connection.
+# Patching it in here closes that gap the same way it was already closed
+# for foreign_keys, with the same one-time, zero-call-site-edits reach.
+#
 # Note: a handful of standalone one-off maintenance scripts (check_db.py,
 # fix_db.py, migrate_generics.py, setup_tables.py, etc.) call
 # sqlite3.connect("pharmacy.db") directly without importing app_paths -
@@ -41,6 +58,7 @@ _real_sqlite_connect = sqlite3.connect
 def _connect_with_foreign_keys(*args, **kwargs):
     conn = _real_sqlite_connect(*args, **kwargs)
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
