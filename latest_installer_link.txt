@@ -1,1 +1,1 @@
-   https://github.com/drskkeyan15-sys/lifecare-erp-updates/releases/download/v1.2.0/LifeCarePharmaV2_Setup_v1.2.0.exe
+https://github.com/drskkeyan15-sys/lifecare-erp-updates/releases/download/v1.2.1/LifeCarePharmaV2_Setup_v1.2.0.exe
